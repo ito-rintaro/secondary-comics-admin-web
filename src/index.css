@@ -70,9 +70,29 @@ body {
   margin-top: 2px;
 }
 
+.sidebar__user {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.sidebar__username {
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar__logout {
+  align-self: flex-start;
+}
+
 .sidebar__note {
   margin: 0;
-  margin-top: auto;
   font-size: 12px;
   line-height: 1.5;
 }
@@ -455,6 +475,54 @@ body {
   gap: 10px;
 }
 
+/* 認証の判定中（本体はまだマウントしない） */
+.auth-status {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.auth-status__msg {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* 編集権限なし画面（editor 未所属・signOut 済み） */
+.auth-denied {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.auth-denied__card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 36px 32px;
+  max-width: 420px;
+  width: 100%;
+  text-align: center;
+}
+
+.auth-denied__icon {
+  font-size: 40px;
+  margin-bottom: 12px;
+}
+
+.auth-denied__title {
+  margin: 0 0 12px;
+  font-size: 20px;
+}
+
+.auth-denied__text {
+  margin: 0 0 24px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
 /* 狭い画面ではサイドバーを上部の横並びバーに切り替える */
 @media (max-width: 720px) {
   .app {
@@ -486,6 +554,17 @@ body {
   }
   .sidebar__note {
     display: none;
+  }
+  .sidebar__user {
+    margin-top: 0;
+    margin-left: auto;
+    flex-direction: row;
+    align-items: center;
+    padding-top: 0;
+    border-top: none;
+  }
+  .sidebar__username {
+    max-width: 160px;
   }
   .content {
     padding: 20px 16px 60px;
