@@ -1,0 +1,908 @@
+openapi: 3.0.3
+
+info:
+  title: Secondary Comics API
+  version: 0.1.0
+  description: |
+    二次流通コミックの資産管理アプリのバックエンド API。
+    「My コレクション」の取得（GET /collection）、
+    「マーケット相場」の取得（GET /market）、
+    「カタログ（書誌マスタ）」の取得（GET /catalogs）、
+    「コレクションへの追加」（POST /collection）を定義する。
+    コレクションの編集・削除（update / delete）は今回スコープ外。
+
+servers:
+  - url: https://api.example.com/dev
+    description: dev 環境（実際の API Gateway ドメインに差し替える）
+
+# ───────────────────────────────────────────────
+# エンドポイント
+# ───────────────────────────────────────────────
+paths:
+  /collection:
+    get:
+      operationId: listCollection
+      summary: ログイン中ユーザーのコレクション一覧を取得
+      description: |
+        Cognito の JWT に含まれるユーザー識別子（sub）で絞り込み、
+        そのユーザーが登録した全アイテムを配列で返す。
+        検索・フィルタ・ソート・集計はフロント側で行うため、
+        サーバーは生のアイテム配列のみを返す（クエリパラメータなし）。
+      tags: [collection]
+      security:
+        - cognito: []
+      responses:
+        '200':
+          description: コレクションのアイテム配列（0 件なら空配列）
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CollectionItem'
+              examples:
+                sample:
+                  $ref: '#/components/examples/CollectionList'
+        '401':
+          description: 未認証（トークンが無い／無効）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      operationId: createCollection
+      summary: コレクションに 1 件追加
+      description: |
+        ログイン中ユーザー（JWT の sub）のコレクションへ新規アイテムを 1 件作成する。
+        書誌は catalogId で既存の Catalog を参照し、本文には所有インスタンス固有の
+        情報だけを入れる（id と updatedAt はサーバが採番）。
+        catalogId と condition が必須で、他は既定値で補完する。
+      tags: [collection]
+      security:
+        - cognito: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewCollectionInput'
+            examples:
+              sample:
+                $ref: '#/components/examples/NewCollectionInputSample'
+      responses:
+        '201':
+          description: 作成された CollectionItem（Catalog を合成した enriched 形）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CollectionItem'
+        '400':
+          description: 入力不正（catalogId 不在 / 必須欠落 / 型不正 / JSON 不正など）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 未認証（トークンが無い／無効）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /market:
+    get:
+      operationId: listMarket
+      summary: マーケット相場の一覧を取得
+      description: |
+        二次流通マーケットの相場レコードを配列で返す。
+        コレクションと異なりユーザー個別ではなく全ユーザー共通（グローバル）の
+        データで、sub による絞り込みは行わない。
+        検索・ソート（新着/値上がり等）はフロント側で行うため、
+        サーバーは生のレコード配列のみを返す（クエリパラメータなし）。
+      tags: [market]
+      security:
+        - cognito: []
+      responses:
+        '200':
+          description: マーケットレコードの配列（0 件なら空配列）
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MarketRecord'
+              examples:
+                sample:
+                  $ref: '#/components/examples/MarketList'
+        '401':
+          description: 未認証（トークンが無い／無効）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      operationId: createMarket
+      summary: マーケット相場を 1 件追加（要 editor 権限）
+      description: |
+        新規の MarketRecord を 1 件作成する。書誌は catalogId で既存の Catalog を
+        参照し、本文には出品固有の情報（seller/condition/history）だけを入れる。
+        price / change は history から導出し、id / listedAt はサーバが採番する。
+        Cognito の "editor" グループに所属するユーザーのみ実行可能（未所属は 403）。
+      tags: [market]
+      security:
+        - cognito: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewMarketInput'
+      responses:
+        '201':
+          description: 作成された MarketRecord（Catalog を合成した形）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketRecord'
+        '400':
+          description: 入力不正（catalogId 不在 / history が12要素でない など）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 未認証（トークンが無い／無効）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: 権限なし（editor グループ未所属）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /market/{id}:
+    put:
+      operationId: updateMarket
+      summary: マーケット相場を更新（要 editor 権限）
+      description: |
+        既存の MarketRecord を更新する。可変項目（catalogId/seller/condition/history）
+        を置き換え、price/change は history から再導出する。listedAt は保持される。
+        "editor" グループ所属が必須（未所属は 403）。
+      tags: [market]
+      security:
+        - cognito: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 対象 MarketRecord の id
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewMarketInput'
+      responses:
+        '200':
+          description: 更新後の MarketRecord
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketRecord'
+        '400':
+          description: 入力不正（catalogId 不在 / history が12要素でない など）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 未認証（トークンが無い／無効）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: 権限なし（editor グループ未所属）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: 指定 id の MarketRecord が存在しない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      operationId: deleteMarket
+      summary: マーケット相場を削除（要 editor 権限）
+      description: |
+        指定 id の MarketRecord を削除する。"editor" グループ所属が必須（未所属は 403）。
+      tags: [market]
+      security:
+        - cognito: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 対象 MarketRecord の id
+          schema:
+            type: string
+      responses:
+        '204':
+          description: 削除成功（本文なし）
+        '401':
+          description: 未認証（トークンが無い／無効）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: 権限なし（editor グループ未所属）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: 指定 id の MarketRecord が存在しない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /catalogs:
+    get:
+      operationId: listCatalogs
+      summary: カタログ（書誌マスタ）の一覧を取得
+      description: |
+        Collection / MarketRecord が catalogId で参照する書誌マスタ（Catalog）を
+        配列で返す。マーケット同様、全ユーザー共通（グローバル）のデータで、
+        sub による絞り込みは行わない。全件が単一パーティション（PK="CATALOG"）に
+        束ねられており、Query 1 回で取得する（クエリパラメータなし）。
+      tags: [catalog]
+      security:
+        - cognito: []
+      responses:
+        '200':
+          description: カタログの配列（0 件なら空配列）
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Catalog'
+              examples:
+                sample:
+                  $ref: '#/components/examples/CatalogList'
+        '401':
+          description: 未認証（トークンが無い／無効）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      operationId: createCatalog
+      summary: カタログ（書誌マスタ）を 1 件追加（要 editor 権限）
+      description: |
+        新規の Catalog を 1 件作成する。id はサーバが採番する（cat-xxx）。
+        title のみ必須で、他は既定値で補完する。
+        Cognito の "editor" グループに所属するユーザーのみ実行可能（未所属は 403）。
+      tags: [catalog]
+      security:
+        - cognito: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewCatalogInput'
+      responses:
+        '201':
+          description: 作成された Catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Catalog'
+        '400':
+          description: 入力不正（title 欠落 / 型不正 / JSON 不正など）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 未認証（トークンが無い／無効）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: 権限なし（editor グループ未所属）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /catalogs/{id}:
+    put:
+      operationId: updateCatalog
+      summary: カタログを更新（要 editor 権限）
+      description: |
+        既存の Catalog を丸ごと更新する。title のみ必須で、他は既定値で補完する。
+        "editor" グループ所属が必須（未所属は 403）。
+      tags: [catalog]
+      security:
+        - cognito: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 対象 Catalog の id
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewCatalogInput'
+      responses:
+        '200':
+          description: 更新後の Catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Catalog'
+        '400':
+          description: 入力不正（title 欠落 / 型不正 / JSON 不正など）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 未認証（トークンが無い／無効）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: 権限なし（editor グループ未所属）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: 指定 id の Catalog が存在しない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      operationId: deleteCatalog
+      summary: カタログを削除（要 editor 権限）
+      description: |
+        指定 id の Catalog を削除する。"editor" グループ所属が必須（未所属は 403）。
+        参照している Collection / MarketRecord がある場合の整合はフロント運用で担保する。
+      tags: [catalog]
+      security:
+        - cognito: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 対象 Catalog の id
+          schema:
+            type: string
+      responses:
+        '204':
+          description: 削除成功（本文なし）
+        '401':
+          description: 未認証（トークンが無い／無効）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: 権限なし（editor グループ未所属）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: 指定 id の Catalog が存在しない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+# ───────────────────────────────────────────────
+# 再利用部品
+# ───────────────────────────────────────────────
+components:
+  securitySchemes:
+    cognito:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Amazon Cognito が発行する JWT を Authorization: Bearer <token> で送る。
+        userId はサーバー側でトークンの sub から取得するため、
+        リクエストには userId を含めない（他人のデータを指定できないようにする）。
+
+  schemas:
+    # コレクションの所有品 1 件。フロントの domain/collection/CollectionItem.ts と一致させる。
+    CollectionItem:
+      type: object
+      required:
+        - id
+        - title
+        - author
+        - publisher
+        - volume
+        - year
+        - condition
+        - qty
+        - cost
+        - market
+        - marketSource
+        - flags
+        - purchaseDate
+        - store
+        - location
+        - memo
+        - imageUrl
+        - updatedAt
+      properties:
+        id:
+          type: string
+          description: アイテム識別子（システム生成）
+          example: seed0
+        title:
+          type: string
+          description: 作品名
+          example: AKIRA 全6巻 初版帯付セット
+        author:
+          type: string
+          description: 著者
+          example: 大友克洋
+        publisher:
+          type: string
+          description: 出版社 / レーベル
+          example: 講談社 / KCデラックス
+        volume:
+          type: string
+          description: 巻数（"全6巻" "第1巻" 等の自由文字列）
+          example: 全6巻
+        year:
+          type: string
+          description: 発行年（文字列）
+          example: '1984'
+        condition:
+          $ref: '#/components/schemas/Condition'
+        qty:
+          type: integer
+          minimum: 1
+          description: 所有数
+          example: 1
+        cost:
+          type: integer
+          minimum: 0
+          description: 取得価格（1 点あたり・円）
+          example: 8000
+        market:
+          type: integer
+          minimum: 0
+          description: |
+            現在相場（1 点あたり・円）。サーバが catalogId のマーケット相場から
+            算出して載せる（コレクションには保存しない）。相場が無ければ 0。
+          example: 35000
+        marketSource:
+          $ref: '#/components/schemas/MarketSource'
+        flags:
+          $ref: '#/components/schemas/ConditionFlags'
+        purchaseDate:
+          type: string
+          description: 購入日（YYYY-MM-DD。未入力は空文字）
+          example: ''
+        store:
+          type: string
+          description: 購入店
+          example: まんだらけ
+        location:
+          type: string
+          description: 保管場所
+          example: 本棚A
+        memo:
+          type: string
+          description: メモ（自由記述）
+          example: 初版・帯揃い。背ヤケ少なめ。
+        imageUrl:
+          type: string
+          description: |
+            画像の S3 オブジェクトキー（ファイル名のみ。例: "xxx.jpg"）。
+            実体は CloudFront 配下の images/ に置かれ、フロントが
+            CloudFront ドメイン + "/images/" を前置して表示する。空文字可。
+          example: 619333a5ab646_991428d170c6d9fab761e61feeffbd6b.jpg
+        updatedAt:
+          type: integer
+          format: int64
+          description: 最終更新時刻（epoch ミリ秒）
+          example: 1718000000000
+
+    # POST /collection のリクエストボディ。id / updatedAt はサーバ採番、
+    # market / marketSource はマーケットから導出するため含めない。
+    # catalogId と condition のみ必須、他は既定値で補完する。
+    NewCollectionInput:
+      type: object
+      required: [catalogId, condition]
+      properties:
+        catalogId:
+          type: string
+          description: 参照する Catalog の id（実在必須。無ければ 400）
+          example: cat-001
+        condition:
+          $ref: '#/components/schemas/Condition'
+        qty:
+          type: integer
+          minimum: 1
+          default: 1
+          description: 所有数（既定 1）
+          example: 1
+        cost:
+          type: integer
+          minimum: 0
+          default: 0
+          description: 取得価格（1 点あたり・円。既定 0）
+          example: 8000
+        purchaseDate:
+          type: string
+          default: ''
+          description: 購入日（YYYY-MM-DD。既定 空文字）
+          example: '2025-12-01'
+        store:
+          type: string
+          default: ''
+          example: まんだらけ
+        location:
+          type: string
+          default: ''
+          example: 本棚A
+        memo:
+          type: string
+          default: ''
+          example: 初版・帯揃い。背ヤケ少なめ。
+
+    # 状態ランク。domain/shared/Condition.ts と一致。
+    Condition:
+      type: string
+      enum: [S, A, B, C]
+      description: |
+        S=新品・美品 / A=良い / B=並 / C=傷み・難あり
+
+    # 相場の出所。domain/collection/CollectionItem.ts の MarketSource と一致。
+    MarketSource:
+      type: string
+      enum: [manual, auto, estimate]
+      description: |
+        相場の出所。manual=手入力 / auto=自動取得 / estimate=推定。
+        Collection では相場あり→auto、相場なし→estimate をサーバが自動設定する。
+
+    # 付帯状態フラグ。domain/collection/ConditionFlags.ts と一致。
+    ConditionFlags:
+      type: object
+      required: [firstEd, obi, special]
+      properties:
+        firstEd:
+          type: boolean
+          description: 初版かどうか
+        obi:
+          type: boolean
+          description: 帯付きかどうか
+        special:
+          type: boolean
+          description: 特装・サイン等の特別仕様かどうか
+
+    # マーケットの相場レコード 1 件。フロントの domain/market/MarketRecord.ts と一致させる。
+    MarketRecord:
+      type: object
+      required:
+        - id
+        - title
+        - author
+        - publisher
+        - volume
+        - seller
+        - condition
+        - flags
+        - history
+        - price
+        - change
+        - listedAt
+        - imageUrl
+      properties:
+        id:
+          type: string
+          description: レコード識別子（システム生成）
+          example: mk0
+        title:
+          type: string
+          description: 作品名
+          example: AKIRA 全6巻 初版帯付 美品セット
+        author:
+          type: string
+          description: 著者
+          example: 大友克洋
+        publisher:
+          type: string
+          description: 出版社 / レーベル
+          example: 講談社
+        volume:
+          type: string
+          description: 巻数（"全6巻" "第1巻" 等の自由文字列）
+          example: 全6巻
+        seller:
+          type: string
+          description: 出品者 / ショップ名
+          example: コレクター田中
+        condition:
+          $ref: '#/components/schemas/Condition'
+        flags:
+          $ref: '#/components/schemas/ConditionFlags'
+        history:
+          type: array
+          description: 直近 12 ヶ月の価格推移（円）。要素数は 12。末尾が現在価格。
+          items:
+            type: integer
+            minimum: 0
+          minItems: 12
+          maxItems: 12
+          example: [30000, 30500, 31000, 31800, 32500, 33000, 33600, 34200, 34800, 35100, 35400, 35400]
+        price:
+          type: integer
+          minimum: 0
+          description: 現在価格（円）。history の末尾と一致する。
+          example: 35400
+        change:
+          type: number
+          format: float
+          description: 期間変化率 (末尾 - 先頭) / 先頭。0.18 なら +18%。
+          example: 0.18
+        listedAt:
+          type: integer
+          format: int64
+          description: 新着ソート用の連番（大きいほど新しい）。
+          example: 0
+        imageUrl:
+          type: string
+          description: |
+            画像の S3 オブジェクトキー（ファイル名のみ。例: "xxx.jpg"）。
+            実体は CloudFront 配下の images/ に置かれ、フロントが
+            CloudFront ドメイン + "/images/" を前置して表示する。空文字可。
+          example: 619333a5ab646_991428d170c6d9fab761e61feeffbd6b.jpg
+
+    # 書誌マスタ（Catalog）1 件。Collection / MarketRecord が catalogId で参照する hub。
+    # フロントの domain/catalog/Catalog.ts と一致させる。
+    Catalog:
+      type: object
+      required:
+        - id
+        - title
+        - author
+        - publisher
+        - volume
+        - year
+        - flags
+        - imageUrl
+      properties:
+        id:
+          type: string
+          description: カタログ識別子（システム生成。cat-xxx）
+          example: cat-001
+        title:
+          type: string
+          description: 作品名
+          example: AKIRA 全6巻 初版帯付セット
+        author:
+          type: string
+          description: 著者
+          example: 大友克洋
+        publisher:
+          type: string
+          description: 出版社 / レーベル
+          example: 講談社 / KCデラックス
+        volume:
+          type: string
+          description: 巻数（"全6巻" "第1巻" 等の自由文字列）
+          example: 全6巻
+        year:
+          type: string
+          description: 発行年（文字列）
+          example: '1984'
+        flags:
+          $ref: '#/components/schemas/ConditionFlags'
+        imageUrl:
+          type: string
+          description: |
+            画像の S3 オブジェクトキー（ファイル名のみ。例: "xxx.jpg"）。
+            実体は CloudFront 配下の images/ に置かれ、フロントが
+            CloudFront ドメイン + "/images/" を前置して表示する。空文字可。
+          example: 619333a5ab646_991428d170c6d9fab761e61feeffbd6b.jpg
+
+    # POST /market・PUT /market/{id} のリクエストボディ。
+    # 書誌は catalogId で参照し、出品固有情報だけを持つ。price / change は history から
+    # 導出、id / listedAt はサーバ採番のため含めない。
+    NewMarketInput:
+      type: object
+      required: [catalogId, condition, history]
+      properties:
+        catalogId:
+          type: string
+          description: 参照する Catalog の id（実在必須。無ければ 400）
+          example: cat-001
+        seller:
+          type: string
+          default: ''
+          description: 出品者 / ショップ名（既定 空文字）
+          example: コレクター田中
+        condition:
+          $ref: '#/components/schemas/Condition'
+        history:
+          type: array
+          description: 直近12ヶ月の価格推移（円）。要素数ちょうど 12・各要素は 0 以上の整数。
+          items:
+            type: integer
+            minimum: 0
+          minItems: 12
+          maxItems: 12
+          example: [30000, 30500, 31000, 31800, 32500, 33000, 33600, 34200, 34800, 35100, 35400, 35400]
+
+    # POST /catalogs・PUT /catalogs/{id} のリクエストボディ。
+    # id はサーバ採番（cat-xxx）のため含めない。title のみ必須、他は既定値で補完する。
+    NewCatalogInput:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          example: AKIRA 全6巻 初版帯付セット
+        author:
+          type: string
+          default: ''
+          example: 大友克洋
+        publisher:
+          type: string
+          default: ''
+          example: 講談社 / KCデラックス
+        volume:
+          type: string
+          default: ''
+          example: 全6巻
+        year:
+          type: string
+          default: ''
+          example: '1984'
+        flags:
+          $ref: '#/components/schemas/ConditionFlags'
+        imageUrl:
+          type: string
+          default: ''
+          description: 画像の S3 オブジェクトキー（ファイル名のみ。空文字可）。
+          example: 619333a5ab646_991428d170c6d9fab761e61feeffbd6b.jpg
+
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          example: Unauthorized
+
+  examples:
+    CollectionList:
+      summary: 2 件のコレクション例
+      value:
+        - id: seed0
+          title: AKIRA 全6巻 初版帯付セット
+          author: 大友克洋
+          publisher: 講談社 / KCデラックス
+          volume: 全6巻
+          year: '1984'
+          condition: A
+          qty: 1
+          cost: 8000
+          market: 35000
+          marketSource: manual
+          flags: { firstEd: true, obi: true, special: false }
+          purchaseDate: ''
+          store: まんだらけ
+          location: 本棚A
+          memo: 初版・帯揃い。背ヤケ少なめ。
+          imageUrl: 619333a5ab646_991428d170c6d9fab761e61feeffbd6b.jpg
+          updatedAt: 1718000000000
+        - id: seed4
+          title: 鬼滅の刃 第1巻 初版
+          author: 吾峠呼世晴
+          publisher: 集英社 / ジャンプコミックス
+          volume: 第1巻
+          year: '2016'
+          condition: S
+          qty: 2
+          cost: 1500
+          market: 9000
+          marketSource: manual
+          flags: { firstEd: true, obi: true, special: false }
+          purchaseDate: ''
+          store: ヤフオク
+          location: 防湿庫
+          memo: 初版帯付き2冊保有。値上がり中。
+          imageUrl: 7c2a90b4de135_4f8e21a6c3b97d05ef6172a4b8c9e30d.jpg
+          updatedAt: 1718000004000
+
+    MarketList:
+      summary: 2 件のマーケット相場例
+      value:
+        - id: mk0
+          title: AKIRA 全6巻 初版帯付 美品セット
+          author: 大友克洋
+          publisher: 講談社
+          volume: 全6巻
+          seller: コレクター田中
+          condition: A
+          flags: { firstEd: true, obi: true, special: false }
+          history: [30000, 30500, 31000, 31800, 32500, 33000, 33600, 34200, 34800, 35100, 35400, 35400]
+          price: 35400
+          change: 0.18
+          listedAt: 0
+          imageUrl: 619333a5ab646_991428d170c6d9fab761e61feeffbd6b.jpg
+        - id: mk1
+          title: 幽☆遊☆白書 直筆サイン入り 第1巻
+          author: 冨樫義博
+          publisher: 集英社
+          volume: 第1巻
+          seller: mangavault
+          condition: A
+          flags: { firstEd: true, obi: true, special: true }
+          history: [52000, 53500, 55000, 57000, 59000, 60500, 62000, 63500, 65000, 66500, 67500, 67600]
+          price: 67600
+          change: 0.3
+          listedAt: 1
+          imageUrl: 7c2a90b4de135_4f8e21a6c3b97d05ef6172a4b8c9e30d.jpg
+
+    CatalogList:
+      summary: 2 件のカタログ例
+      value:
+        - id: cat-001
+          title: AKIRA 全6巻 初版帯付セット
+          author: 大友克洋
+          publisher: 講談社 / KCデラックス
+          volume: 全6巻
+          year: '1984'
+          flags: { firstEd: true, obi: true, special: false }
+          imageUrl: 619333a5ab646_991428d170c6d9fab761e61feeffbd6b.jpg
+        - id: cat-002
+          title: 鋼鉄都市クロニクル
+          author: 黒崎陣
+          publisher: メカニカ書房
+          volume: '3'
+          year: '2021'
+          flags: { firstEd: true, obi: false, special: true }
+          imageUrl: ''
+
+    NewCollectionInputSample:
+      summary: 作成リクエストの例（必須 + 任意）
+      value:
+        catalogId: cat-001
+        condition: A
+        qty: 1
+        cost: 8000
+        purchaseDate: '2025-12-01'
+        store: まんだらけ
+        location: 本棚A
+        memo: 初版・帯揃い。背ヤケ少なめ。
