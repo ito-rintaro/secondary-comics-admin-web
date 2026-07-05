@@ -241,10 +241,18 @@ body {
   font-size: 13px;
 }
 
+/* アクション列は通常の table-cell のままにして、他列と同じ vertical-align:middle で
+   高さ・縦位置を揃える（display:flex にするとセルの縦位置が他列とずれる）。 */
 .row-actions {
-  display: flex;
-  gap: 6px;
   white-space: nowrap;
+}
+
+.row-actions .btn {
+  vertical-align: middle;
+}
+
+.row-actions .btn + .btn {
+  margin-left: 6px;
 }
 
 /* サムネイル */
