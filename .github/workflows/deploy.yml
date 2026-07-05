@@ -1,0 +1,66 @@
+name: Deploy to S3
+
+# 既存 web（secondary-comics-web）の deploy.yml を流用。
+# 【最重要】AWS_S3_BUCKET は admin 専用バケットを指すこと（§14-1）。
+# 既存 web と同じバケットに sync すると `--delete` で既存サイトが消える。
+
+on:
+  push:
+    branches:
+      - main # main へのマージ → dev へ自動デプロイ
+  workflow_dispatch: # 手動実行 → prod（または dev）へデプロイ
+    inputs:
+      environment:
+        description: デプロイ先環境
+        type: choice
+        options:
+          - dev
+          - prod
+        default: prod
+
+# push は dev、手動実行は選んだ環境。環境ごとに別グループにして dev/prod の同時実行は許可する。
+concurrency:
+  group: deploy-${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'dev' }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # GitHub Environments(dev/prod) の Variables / Secrets を読み込む。
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'dev' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # CI には .env ファイルが無いので、環境の Variables を VITE_* として注入する。
+      # build:dev / build:prod が import.meta.env.MODE を正しく設定する。
+      - name: Build
+        run: npm run build:${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'dev' }}
+        env:
+          VITE_IMAGE_BASE_URL: ${{ vars.VITE_IMAGE_BASE_URL }}
+          VITE_USE_API: ${{ vars.VITE_USE_API }}
+          VITE_AWS_REGION: ${{ vars.VITE_AWS_REGION }}
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_COGNITO_USER_POOL_ID: ${{ vars.VITE_COGNITO_USER_POOL_ID }}
+          VITE_COGNITO_CLIENT_ID: ${{ vars.VITE_COGNITO_CLIENT_ID }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.VITE_AWS_REGION }}
+
+      # 【事故防止】AWS_S3_BUCKET は必ず admin 専用バケット（§14-1）。
+      - name: Sync dist to S3
+        run: aws s3 sync dist/ s3://${{ vars.AWS_S3_BUCKET }}/ --delete
