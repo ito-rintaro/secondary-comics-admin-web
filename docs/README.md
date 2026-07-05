@@ -56,9 +56,10 @@ UI (features/*)
 
 - 契約は [`openapi.yaml`](./openapi.yaml)。`VITE_USE_API === "true"` のとき `container.ts` が
   `HttpXxxRepository` を返し、`VITE_API_BASE_URL` 宛に接続する。
-- **対応範囲は追加・編集（create / update）のみ。削除（delete）は今回スコープ外。**
-  API モードの `remove()` は明示的に未対応エラー（501）を投げ、画面はそれを捕捉して
-  「未対応」バナーを表示する（`Catalog/MarketPage`）。
+- **対応範囲は追加・編集・削除（create / update / delete）。** 削除は
+  `DELETE /catalogs/{id}` / `DELETE /market/{id}`（成功時 204・本文なし）。失敗
+  （403/404 等）は各ページが捕捉してバナー表示する（`Catalog/MarketPage`）。
+- 本文なしの 204 は `httpClient.ts` の `apiRequestVoid`（JSON を読まない）で扱う。
 - **認証**: `httpClient.ts` が Cognito の **ID トークン**を `Authorization: Bearer` で送る
   （editor グループ判定に使う `cognito:groups` は ID トークンに載るため）。
 - **マーケットの書誌は catalogId 参照**: `POST/PUT /market` の `NewMarketInput` は

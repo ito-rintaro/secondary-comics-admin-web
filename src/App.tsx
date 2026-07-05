@@ -55,7 +55,7 @@ export default function App() {
               </button>
               <p className="sidebar__note muted">
                 {usingApi
-                  ? "API に接続しています（追加・編集）。削除は未対応です。"
+                  ? "API に接続しています（追加・編集・削除）。"
                   : "データは localStorage に保存されます（モックモード）。"}
               </p>
             </div>

@@ -68,8 +68,8 @@ export function MarketPage() {
 
   const confirmDelete = async () => {
     if (!deleting) return;
-    // 削除は今回スコープ外。API モードでは remove() が未対応エラーを投げるため、
-    // ここで捕捉して画面に表示する（決定：押したら「未対応」エラー表示）。
+    // API モードでは remove() が DELETE /market/{id} を叩く。失敗（403/404 等）は
+    // ここで捕捉して画面バナーに表示する。
     try {
       await marketRepository.remove(deleting.id);
       setDeleting(null);

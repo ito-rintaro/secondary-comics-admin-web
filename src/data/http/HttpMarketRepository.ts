@@ -1,7 +1,7 @@
 import type { MarketRecord } from "../../domain/MarketRecord";
 import type { Condition } from "../../domain/Condition";
 import type { MarketRepository, NewMarketInput } from "../MarketRepository";
-import { ApiError, apiRequest } from "./httpClient";
+import { ApiError, apiRequest, apiRequestVoid } from "./httpClient";
 
 // API の NewMarketInput（openapi.yaml）。書誌・flags は catalogId 参照の Catalog から
 // サーバが導出するため送らず、出品固有情報だけを送る。
@@ -20,9 +20,9 @@ const toApiInput = (input: NewMarketInput): MarketApiInput => ({
 });
 
 // 編集系 API 実装（openapi.yaml /market）。
-// GET /market（list）/ POST /market（create）/ PUT /market/{id}（update）に対応。
+// GET /market（list）/ POST /market（create）/ PUT /market/{id}（update）/
+// DELETE /market/{id}（remove）に対応。
 // GET /market/{id} は API に無いため get は list から解決する。
-// 削除（DELETE /market/{id}）は今回スコープ外のため remove は明示的に未対応エラーを投げる。
 export class HttpMarketRepository implements MarketRepository {
   async list(): Promise<MarketRecord[]> {
     return apiRequest<MarketRecord[]>("/market");
@@ -59,6 +59,9 @@ export class HttpMarketRepository implements MarketRepository {
   }
 
   async remove(id: string): Promise<void> {
-    throw new ApiError(501, `相場レコードの削除は現在未対応です（${id}）。`);
+    // DELETE /market/{id} は成功時 204（本文なし）。
+    await apiRequestVoid(`/market/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
   }
 }

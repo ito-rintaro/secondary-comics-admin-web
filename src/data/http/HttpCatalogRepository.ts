@@ -1,11 +1,11 @@
 import type { Catalog } from "../../domain/Catalog";
 import type { CatalogRepository } from "../CatalogRepository";
-import { ApiError, apiRequest } from "./httpClient";
+import { apiRequest, apiRequestVoid } from "./httpClient";
 
 // 編集系 API 実装（openapi.yaml /catalogs）。
-// GET /catalogs（list）/ POST /catalogs（create）/ PUT /catalogs/{id}（update）に対応。
+// GET /catalogs（list）/ POST /catalogs（create）/ PUT /catalogs/{id}（update）/
+// DELETE /catalogs/{id}（remove）に対応。
 // GET /catalogs/{id} は API に無いため get は list から解決する。
-// 削除（DELETE /catalogs/{id}）は今回スコープ外のため remove は明示的に未対応エラーを投げる。
 export class HttpCatalogRepository implements CatalogRepository {
   async list(): Promise<Catalog[]> {
     return apiRequest<Catalog[]>("/catalogs");
@@ -33,6 +33,9 @@ export class HttpCatalogRepository implements CatalogRepository {
   }
 
   async remove(id: string): Promise<void> {
-    throw new ApiError(501, `カタログの削除は現在未対応です（${id}）。`);
+    // DELETE /catalogs/{id} は成功時 204（本文なし）。
+    await apiRequestVoid(`/catalogs/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
   }
 }
