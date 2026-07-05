@@ -27,11 +27,11 @@ UI (features/*)
 | パス | 役割 |
 |---|---|
 | `src/domain/` | 型定義（バックエンド `domain/**` / `openapi.yaml` と一致） |
-| `src/data/` | Repository interface（`CatalogRepository.ts` / `MarketRepository.ts`） |
-| `src/data/localStorage/` | localStorage 実装 + JSON ストアヘルパ |
-| `src/data/http/` | 実 API 実装（`httpClient.ts` + `HttpCatalogRepository` / `HttpMarketRepository`） |
+| `src/data/` | Repository interface（`CatalogRepository.ts` / `MarketRepository.ts` / `ImageRepository.ts`） |
+| `src/data/localStorage/` | localStorage 実装 + JSON ストアヘルパ（`ImageRepository` は data: URL 化） |
+| `src/data/http/` | 実 API 実装（`httpClient.ts` + `HttpCatalogRepository` / `HttpMarketRepository` / `HttpImageRepository`） |
 | `src/data/seed/` | 初期シード（起動時に localStorage が空なら投入） |
-| `src/lib/` | `marketDerive.ts`（§8 導出）・`imageUrl.ts`（画像解決）・`format.ts`・`errorMessage.ts` |
+| `src/lib/` | `marketDerive.ts`（§8 導出）・`imageUrl.ts`（画像解決）・`imageValidation.ts`（アップロード検証）・`format.ts`・`errorMessage.ts` |
 | `src/features/catalog/` | カタログ CRUD 画面 |
 | `src/features/market/` | マーケット CRUD 画面 |
 | `src/features/common/` | Thumbnail / ConfirmDialog / Sparkline |
@@ -51,6 +51,8 @@ UI (features/*)
   - `imageUrl` は S3 オブジェクトキー（ファイル名のみ）
   - `VITE_IMAGE_BASE_URL`（ドメインのみ・末尾スラッシュ無し）＋ コード側で `/images/` 前置
   - 既存 web `src/presentation/imageSrc.ts` と同一挙動
+  - 画像を Web からアップロードする機能の設計は
+    [`image-upload-design.md`](./image-upload-design.md)（署名付き PUT 方式・設計中）
 
 ## 編集系 API 接続（`src/data/http/`）
 

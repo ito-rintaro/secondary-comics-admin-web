@@ -454,6 +454,30 @@ body {
   margin-top: 4px;
 }
 
+/* カタログフォームの画像アップロード（プレビュー + 操作）。 */
+.image-upload {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.image-upload__controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.image-upload__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.thumb--lg {
+  width: 72px;
+  height: 72px;
+}
+
 /* マーケットフォームの選択カタログ書誌プレビュー（読み取り専用）。 */
 .catalog-preview {
   display: flex;
