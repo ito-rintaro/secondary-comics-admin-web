@@ -56,6 +56,19 @@ UI (features/*)
 - 720px 以下ではサイドバーを上部の横並びバーに自動で切り替える。
 - ルーター・状態管理ライブラリは不使用（`App.tsx` のローカル state で切替）。
 
+## 認証・認可（editor グループゲート）
+
+- 既存バックエンドと同じ Cognito User Pool でサインインする（Amplify Auth・SRP）。
+- **`editor` グループ所属ユーザーだけが本体に到達できる。** 未所属ユーザーはログイン後に
+  即 `signOut()` し、「編集権限がありません」画面を表示する。
+- 判定は [`src/presentation/auth/AuthGate.tsx`](../src/presentation/auth/AuthGate.tsx) の
+  1 か所に集約し、個別画面に権限チェックを散らさない。**editor 判定が済むまで本体を一切
+  マウントしない**（ちらつき防止）。3 状態（ログイン画面 / 権限なし画面 / 本体）を明確に分離。
+- グループ判定は [`src/presentation/auth/editorGate.ts`](../src/presentation/auth/editorGate.ts)。
+  `cognito:groups` は配列・文字列の両形式を吸収してから判定する。
+- FE のゲートは UX 制御であり、**セキュリティの最終防衛線は編集 API の 403**（サーバ側）。
+  グループ変更はトークン再発行（再ログイン）まで反映されない点は運用で周知する。
+
 ## 開発コマンド
 
 ```bash
