@@ -1,9 +1,12 @@
 import type { CatalogRepository } from "../data/CatalogRepository";
 import type { MarketRepository } from "../data/MarketRepository";
+import type { ImageRepository } from "../data/ImageRepository";
 import { LocalCatalogRepository } from "../data/localStorage/LocalCatalogRepository";
 import { LocalMarketRepository } from "../data/localStorage/LocalMarketRepository";
+import { LocalImageRepository } from "../data/localStorage/LocalImageRepository";
 import { HttpCatalogRepository } from "../data/http/HttpCatalogRepository";
 import { HttpMarketRepository } from "../data/http/HttpMarketRepository";
+import { HttpImageRepository } from "../data/http/HttpImageRepository";
 
 // 依存の組み立て（DI コンテナ）。
 // 画面は interface（CatalogRepository / MarketRepository）にのみ依存し、
@@ -23,6 +26,10 @@ const createCatalogRepository = (): CatalogRepository =>
 const createMarketRepository = (): MarketRepository =>
   usingApi ? new HttpMarketRepository() : new LocalMarketRepository();
 
+const createImageRepository = (): ImageRepository =>
+  usingApi ? new HttpImageRepository() : new LocalImageRepository();
+
 // アプリ全体で共有する単一インスタンス。
 export const catalogRepository: CatalogRepository = createCatalogRepository();
 export const marketRepository: MarketRepository = createMarketRepository();
+export const imageRepository: ImageRepository = createImageRepository();

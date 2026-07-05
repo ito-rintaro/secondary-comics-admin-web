@@ -422,6 +422,52 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /uploads:
+    post:
+      operationId: createUploadUrl
+      summary: 画像アップロード用の署名付き PUT URL を発行（要 editor 権限）
+      description: |
+        カタログ画像を S3 の images/ 配下に直接アップロードするための署名付き URL を返す。
+        オブジェクトキーはサーバが採番する（クライアントのファイル名は使わない）。
+        フロントは返却された uploadUrl に、認証ヘッダ無し・Content-Type を申告した
+        contentType と一致させて画像バイトを PUT する。実体は images/<key> に保存され、
+        保存すべき imageUrl は key（images/ を除いたファイル名）。
+        Cognito の "editor" グループに所属するユーザーのみ実行可能（未所属は 403）。
+      tags: [upload]
+      security:
+        - cognito: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewUploadInput'
+      responses:
+        '200':
+          description: 署名付き PUT URL と、保存すべき imageUrl キー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadTicket'
+        '400':
+          description: 入力不正（contentType 欠落 / 未対応の型など）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 未認証（トークンが無い／無効）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: 権限なし（editor グループ未所属）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
 # ───────────────────────────────────────────────
 # 再利用部品
 # ───────────────────────────────────────────────
@@ -795,6 +841,35 @@ components:
           default: ''
           description: 画像の S3 オブジェクトキー（ファイル名のみ。空文字可）。
           example: 619333a5ab646_991428d170c6d9fab761e61feeffbd6b.jpg
+
+    # POST /uploads のリクエストボディ。ファイルの MIME タイプのみを申告する。
+    # 許可は jpeg / png / webp のみ（SVG は XSS 対策で不可）。
+    NewUploadInput:
+      type: object
+      required: [contentType]
+      properties:
+        contentType:
+          type: string
+          enum: [image/jpeg, image/png, image/webp]
+          description: アップロードするファイルの MIME タイプ
+          example: image/jpeg
+
+    # POST /uploads のレスポンス。uploadUrl に画像を PUT し、key を imageUrl に保存する。
+    UploadTicket:
+      type: object
+      required: [key, uploadUrl, expiresIn]
+      properties:
+        key:
+          type: string
+          description: 保存すべき imageUrl（images/ を除いたファイル名のみ）。
+          example: 8f3c1e2a-4b5d-6e7f-8a9b-0c1d2e3f4a5b.jpg
+        uploadUrl:
+          type: string
+          description: この URL に画像バイトを PUT する（Content-Type を contentType と一致させる）。
+        expiresIn:
+          type: integer
+          description: uploadUrl の有効秒数。
+          example: 300
 
     Error:
       type: object
