@@ -57,11 +57,8 @@ export interface RequestOptions {
   body?: unknown;
 }
 
-// JSON レスポンスを返す共通リクエスト。2xx 以外は ApiError を投げる。
-export const apiRequest = async <T>(
-  path: string,
-  opts: RequestOptions = {},
-): Promise<T> => {
+// 認証付きで送信し、2xx 以外は ApiError を投げて Response を返す共通処理。
+const send = async (path: string, opts: RequestOptions): Promise<Response> => {
   const auth = await authHeader();
   const hasBody = opts.body !== undefined;
   const res = await fetch(`${baseUrl()}${path}`, {
@@ -75,5 +72,22 @@ export const apiRequest = async <T>(
   if (!res.ok) {
     throw new ApiError(res.status, await extractMessage(res));
   }
+  return res;
+};
+
+// JSON レスポンスを返す共通リクエスト（GET / POST / PUT）。
+export const apiRequest = async <T>(
+  path: string,
+  opts: RequestOptions = {},
+): Promise<T> => {
+  const res = await send(path, opts);
   return (await res.json()) as T;
+};
+
+// 本文を返さないリクエスト（DELETE の 204 など）。成功可否だけを扱う。
+export const apiRequestVoid = async (
+  path: string,
+  opts: RequestOptions = {},
+): Promise<void> => {
+  await send(path, opts);
 };
