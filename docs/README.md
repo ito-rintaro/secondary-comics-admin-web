@@ -15,11 +15,12 @@ UI (features/*)
       具体実装の選択は config/container.ts の 1 箇所に集約
                                   │
         ┌─────────────────────────┴───────────────┐
-   LocalXxxRepository (localStorage)        HttpXxxRepository (将来 / fetch)
+   LocalXxxRepository (localStorage)        HttpXxxRepository (fetch / 実 API)
 ```
 
 - **画面から直接 `localStorage` / `fetch` を触らない。** 必ず Repository interface 越し。
 - モック（localStorage）→ 実 API（Lambda）の切替は `container.ts` の差し替えのみで完結する。
+  `VITE_USE_API === "true"` で `HttpXxxRepository`、それ以外は `LocalXxxRepository`。
 
 ## ディレクトリ構成
 
@@ -28,8 +29,9 @@ UI (features/*)
 | `src/domain/` | 型定義（バックエンド `domain/**` / `openapi.yaml` と一致） |
 | `src/data/` | Repository interface（`CatalogRepository.ts` / `MarketRepository.ts`） |
 | `src/data/localStorage/` | localStorage 実装 + JSON ストアヘルパ |
+| `src/data/http/` | 実 API 実装（`httpClient.ts` + `HttpCatalogRepository` / `HttpMarketRepository`） |
 | `src/data/seed/` | 初期シード（起動時に localStorage が空なら投入） |
-| `src/lib/` | `marketDerive.ts`（§8 導出）・`imageUrl.ts`（画像解決）・`format.ts` |
+| `src/lib/` | `marketDerive.ts`（§8 導出）・`imageUrl.ts`（画像解決）・`format.ts`・`errorMessage.ts` |
 | `src/features/catalog/` | カタログ CRUD 画面 |
 | `src/features/market/` | マーケット CRUD 画面 |
 | `src/features/common/` | Thumbnail / ConfirmDialog / Sparkline |
@@ -49,6 +51,25 @@ UI (features/*)
   - `imageUrl` は S3 オブジェクトキー（ファイル名のみ）
   - `VITE_IMAGE_BASE_URL`（ドメインのみ・末尾スラッシュ無し）＋ コード側で `/images/` 前置
   - 既存 web `src/presentation/imageSrc.ts` と同一挙動
+
+## 編集系 API 接続（`src/data/http/`）
+
+- 契約は [`openapi.yaml`](./openapi.yaml)。`VITE_USE_API === "true"` のとき `container.ts` が
+  `HttpXxxRepository` を返し、`VITE_API_BASE_URL` 宛に接続する。
+- **対応範囲は追加・編集（create / update）のみ。削除（delete）は今回スコープ外。**
+  API モードの `remove()` は明示的に未対応エラー（501）を投げ、画面はそれを捕捉して
+  「未対応」バナーを表示する（`Catalog/MarketPage`）。
+- **認証**: `httpClient.ts` が Cognito の **ID トークン**を `Authorization: Bearer` で送る
+  （editor グループ判定に使う `cognito:groups` は ID トークンに載るため）。
+- **マーケットの書誌は catalogId 参照**: `POST/PUT /market` の `NewMarketInput` は
+  `catalogId / seller / condition / history` のみで、書誌（title/author/… / flags）は
+  サーバが参照カタログから導出する。そのため `MarketForm` はカタログ選択を必須にし、
+  書誌は選択カタログからの読み取り専用プレビューにしている。`catalogId` は入力専用で、
+  保存・返却型の `MarketRecord` には持たせない（localStorage 実装は無視する）。
+- **ステージ**: リクエストは `VITE_API_BASE_URL + /catalogs` の形で組み立てる。API Gateway が
+  名前付きステージ（例 `/dev`）なら `VITE_API_BASE_URL` 末尾に含める（`$default` なら不要）。
+- **エラー**: 2xx 以外はレスポンス body の `{ message }` を拾って `ApiError` を投げ、
+  フォーム / バナーに表示する（400 / 401 / 403 / 404）。
 
 ## UI レイアウト
 
@@ -81,8 +102,9 @@ npm run lint         # ESLint
 
 ## 環境変数
 
-`.env.example` を参照。`.env.dev` / `.env.prod` を作成（コミットしない）。当面 localStorage
-完結のため実質必須は `VITE_IMAGE_BASE_URL` のみ。残りは将来の API / 認証接続用に予約。
+`.env.example` を参照。`.env.dev` / `.env.prod` を作成（コミットしない）。localStorage 完結の
+モックモードでは実質必須は `VITE_IMAGE_BASE_URL` のみ。**実 API に接続する場合**は
+`VITE_USE_API=true` と `VITE_API_BASE_URL`（+ 必要ならステージ）を設定する。
 
 ## デプロイ / インフラ上の注意
 

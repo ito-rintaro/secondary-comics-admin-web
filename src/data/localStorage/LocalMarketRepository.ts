@@ -1,5 +1,5 @@
 import type { MarketRecord } from "../../domain/MarketRecord";
-import type { MarketRepository } from "../MarketRepository";
+import type { MarketRepository, NewMarketInput } from "../MarketRepository";
 import { deriveMarketValues } from "../../lib/marketDerive";
 import { marketSeed } from "../seed/markets.seed";
 import { readOrSeed, writeArray } from "./jsonStore";
@@ -42,15 +42,23 @@ export class LocalMarketRepository implements MarketRepository {
     return this.read().find((r) => r.id === id) ?? null;
   }
 
-  async create(
-    input: Omit<MarketRecord, "id" | "price" | "change" | "listedAt">,
-  ): Promise<MarketRecord> {
+  async create(input: NewMarketInput): Promise<MarketRecord> {
     const items = this.read();
+    // catalogId は入力専用（API 用）。localStorage には保存せず、
+    // フォームがカタログから埋めた書誌をそのまま保存する。
     // price / change を history から再導出（§8）。id / listedAt を採番。
     const created: MarketRecord = deriveMarketValues({
-      ...input,
       id: this.nextId(items),
+      title: input.title,
+      author: input.author,
+      publisher: input.publisher,
+      volume: input.volume,
+      seller: input.seller,
+      condition: input.condition,
+      flags: input.flags,
+      history: input.history,
       listedAt: this.nextListedAt(items),
+      imageUrl: input.imageUrl,
     });
     items.push(created);
     this.write(items);
@@ -59,13 +67,16 @@ export class LocalMarketRepository implements MarketRepository {
 
   async update(
     id: string,
-    patch: Partial<Omit<MarketRecord, "id">>,
+    patch: Partial<NewMarketInput>,
   ): Promise<MarketRecord> {
     const items = this.read();
     const idx = items.findIndex((r) => r.id === id);
     if (idx === -1) throw new Error(`MarketRecord not found: ${id}`);
+    // catalogId は保存対象外なので除外してからマージする。
+    const { catalogId: _ignoredCatalogId, ...rest } = patch;
+    void _ignoredCatalogId;
     // マージ後の history を基に price / change を再導出（§8）。
-    const merged: MarketRecord = { ...items[idx], ...patch, id };
+    const merged: MarketRecord = { ...items[idx], ...rest, id };
     const updated = deriveMarketValues(merged);
     items[idx] = updated;
     this.write(items);

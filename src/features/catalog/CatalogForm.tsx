@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Catalog } from "../../domain/Catalog";
+import { errorMessage } from "../../lib/errorMessage";
 
 // カタログの作成 / 編集フォーム（指示書 §9-1）。
 // title 必須。その他は空文字許容。id は編集時に読み取り専用表示（作成時は未採番）。
@@ -21,13 +22,14 @@ export function CatalogForm({
   onCancel,
 }: {
   editing: Catalog | null;
-  onSubmit: (values: CatalogFormValues) => void;
+  onSubmit: (values: CatalogFormValues) => void | Promise<void>;
   onCancel: () => void;
 }) {
   const [values, setValues] = useState<CatalogFormValues>(
     editing ? { ...editing } : emptyValues,
   );
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const set = <K extends keyof CatalogFormValues>(
     key: K,
@@ -37,14 +39,22 @@ export function CatalogForm({
   const setFlag = (key: keyof Catalog["flags"], v: boolean) =>
     setValues((prev) => ({ ...prev, flags: { ...prev.flags, [key]: v } }));
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (values.title.trim() === "") {
       setError("title は必須です。");
       return;
     }
     setError(null);
-    onSubmit({ ...values, title: values.title.trim() });
+    setSubmitting(true);
+    try {
+      await onSubmit({ ...values, title: values.title.trim() });
+    } catch (err) {
+      // API モードでの 400 / 401 / 403 などをフォーム上に表示する。
+      setError(errorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -153,11 +163,16 @@ export function CatalogForm({
       {error && <p className="form__error">{error}</p>}
 
       <div className="form__actions">
-        <button type="button" className="btn" onClick={onCancel}>
+        <button
+          type="button"
+          className="btn"
+          onClick={onCancel}
+          disabled={submitting}
+        >
           キャンセル
         </button>
-        <button type="submit" className="btn btn--primary">
-          {editing ? "更新" : "作成"}
+        <button type="submit" className="btn btn--primary" disabled={submitting}>
+          {submitting ? "送信中…" : editing ? "更新" : "作成"}
         </button>
       </div>
     </form>

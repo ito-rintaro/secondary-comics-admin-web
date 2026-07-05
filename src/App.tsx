@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AuthGate } from "./presentation/auth/AuthGate";
 import { CatalogPage } from "./features/catalog/CatalogPage";
 import { MarketPage } from "./features/market/MarketPage";
+import { usingApi } from "./config/container";
 
 type Tab = "catalog" | "market";
 
@@ -53,7 +54,9 @@ export default function App() {
                 ログアウト
               </button>
               <p className="sidebar__note muted">
-                データは localStorage に保存されます（モックモード）。
+                {usingApi
+                  ? "API に接続しています（追加・編集）。削除は未対応です。"
+                  : "データは localStorage に保存されます（モックモード）。"}
               </p>
             </div>
           </aside>

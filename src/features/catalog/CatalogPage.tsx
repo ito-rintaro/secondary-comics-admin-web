@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Catalog } from "../../domain/Catalog";
 import { catalogRepository } from "../../config/container";
 import { flagLabels } from "../../lib/format";
+import { errorMessage } from "../../lib/errorMessage";
 import { Thumbnail } from "../common/Thumbnail";
 import { ConfirmDialog } from "../common/ConfirmDialog";
 import { CatalogForm, type CatalogFormValues } from "./CatalogForm";
@@ -16,6 +17,7 @@ export function CatalogPage() {
   const [mode, setMode] = useState<Mode>({ kind: "list" });
   const [query, setQuery] = useState("");
   const [deleting, setDeleting] = useState<Catalog | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     const list = await catalogRepository.list();
@@ -49,9 +51,17 @@ export function CatalogPage() {
 
   const confirmDelete = async () => {
     if (!deleting) return;
-    await catalogRepository.remove(deleting.id);
-    setDeleting(null);
-    await reload();
+    // 削除は今回スコープ外。API モードでは remove() が未対応エラーを投げるため、
+    // ここで捕捉して画面に表示する（決定：押したら「未対応」エラー表示）。
+    try {
+      await catalogRepository.remove(deleting.id);
+      setDeleting(null);
+      setActionError(null);
+      await reload();
+    } catch (e) {
+      setDeleting(null);
+      setActionError(errorMessage(e));
+    }
   };
 
   const filtered = useMemo(() => {
@@ -90,11 +100,16 @@ export function CatalogPage() {
         <button
           type="button"
           className="btn btn--primary"
-          onClick={() => setMode({ kind: "create" })}
+          onClick={() => {
+            setActionError(null);
+            setMode({ kind: "create" });
+          }}
         >
           ＋ 新規カタログ
         </button>
       </div>
+
+      {actionError && <p className="form__error">{actionError}</p>}
 
       {loading ? (
         <p className="muted">読み込み中…</p>
@@ -139,7 +154,10 @@ export function CatalogPage() {
                     <button
                       type="button"
                       className="btn btn--sm"
-                      onClick={() => setMode({ kind: "edit", item: c })}
+                      onClick={() => {
+                        setActionError(null);
+                        setMode({ kind: "edit", item: c });
+                      }}
                     >
                       編集
                     </button>
