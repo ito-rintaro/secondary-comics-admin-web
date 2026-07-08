@@ -1,4 +1,3 @@
-import type { Condition } from "../../domain/Condition";
 import type { MarketSale } from "../../domain/MarketSale";
 import type { MarketSummary } from "../../domain/MarketSummary";
 import type { MarketRepository, NewMarketInput } from "../MarketRepository";
@@ -8,7 +7,7 @@ import { ApiError, apiRequest, apiRequestVoid } from "./httpClient";
 // サーバが合成するため送らず、成約固有情報（condition/price/soldAt/seller）だけを送る。
 interface MarketApiInput {
   catalogId: string;
-  condition: Condition;
+  condition: string;
   price: number;
   soldAt: string;
   seller: string;
@@ -51,17 +50,13 @@ export class HttpMarketRepository implements MarketRepository {
     id: string,
     patch: Partial<NewMarketInput>,
   ): Promise<MarketSale> {
-    // PUT /market/{id} は catalogId / condition / price / soldAt を必須で全置換する。
+    // PUT /market/{id} は catalogId / price / soldAt を必須で全置換する。
+    // condition は任意（鑑定記録・空文字可）なのでガードに含めない。
     // フォームは常に全項目を送るが、型上は Partial のためここで担保する。
-    if (
-      !patch.catalogId ||
-      !patch.condition ||
-      patch.price === undefined ||
-      !patch.soldAt
-    ) {
+    if (!patch.catalogId || patch.price === undefined || !patch.soldAt) {
       throw new ApiError(
         400,
-        "更新には catalogId / condition / price / soldAt が必要です。",
+        "更新には catalogId / price / soldAt が必要です。",
       );
     }
     return apiRequest<MarketSale>(`/market/${encodeURIComponent(id)}`, {

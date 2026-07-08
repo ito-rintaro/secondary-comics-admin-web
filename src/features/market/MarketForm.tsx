@@ -1,7 +1,5 @@
 import { useState } from "react";
 import type { Catalog } from "../../domain/Catalog";
-import type { Condition } from "../../domain/Condition";
-import { CONDITIONS } from "../../domain/Condition";
 import type { MarketSale } from "../../domain/MarketSale";
 import type { NewMarketInput } from "../../data/MarketRepository";
 import { validatePrice, validateSoldAt } from "../../lib/marketDerive";
@@ -16,6 +14,17 @@ import { Thumbnail } from "../common/Thumbnail";
 // price は単一の整数円、soldAt は日付ピッカー（YYYY-MM-DD）。
 export type MarketFormValues = NewMarketInput;
 
+// GBA ランクの入力制限は「入力画面だけ」の制約（保存・API の型は string のまま）。
+// 空文字は許可（未鑑定）。入力があれば 0〜10.0・小数第 1 位まで（0.1 刻み）の数値のみ許容する。
+// 分類が将来変わっても型は据え置きで、このフォームの検証だけ差し替えれば済むようにしている。
+const validateGbaRank = (value: string): boolean => {
+  const t = value.trim();
+  if (t === "") return true;
+  if (!/^\d{1,2}(?:\.\d)?$/.test(t)) return false; // 整数部 1〜2 桁 + 任意で小数第 1 位
+  const n = Number(t);
+  return n >= 0 && n <= 10;
+};
+
 export function MarketForm({
   editing,
   catalogs,
@@ -29,9 +38,7 @@ export function MarketForm({
 }) {
   // 編集時は既存成約の catalogId をそのまま初期選択する（MarketSale は catalogId を持つ）。
   const [catalogId, setCatalogId] = useState<string>(editing?.catalogId ?? "");
-  const [condition, setCondition] = useState<Condition>(
-    editing?.condition ?? "A",
-  );
+  const [condition, setCondition] = useState<string>(editing?.condition ?? "");
   const [priceStr, setPriceStr] = useState<string>(
     editing ? String(editing.price) : "",
   );
@@ -59,13 +66,17 @@ export function MarketForm({
       setError("soldAt は実在する日付（YYYY-MM-DD）で入力してください。");
       return;
     }
+    if (!validateGbaRank(condition)) {
+      setError("condition は GBA ランク（0〜10.0・0.1 刻み）で入力してください。");
+      return;
+    }
     setError(null);
     setSubmitting(true);
     try {
       // 書誌 / flags は参照カタログから埋める（API はこれらを catalogId から合成する）。
       await onSubmit({
         catalogId: selectedCatalog.id,
-        condition,
+        condition: condition.trim(),
         price,
         soldAt,
         seller,
@@ -167,18 +178,18 @@ export function MarketForm({
 
       <div className="field-row">
         <label className="field">
-          <span className="field__label">condition</span>
-          <select
+          <span className="field__label">condition（GBA ランク・0〜10.0）</span>
+          <input
             className="field__input"
+            type="number"
+            min={0}
+            max={10}
+            step={0.1}
+            inputMode="decimal"
             value={condition}
-            onChange={(e) => setCondition(e.target.value as Condition)}
-          >
-            {CONDITIONS.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
+            placeholder="例: 9.5（0〜10.0・0.1 刻み。未鑑定なら空欄可）"
+            onChange={(e) => setCondition(e.target.value)}
+          />
         </label>
         <label className="field">
           <span className="field__label">seller（販売元 / ショップ名）</span>

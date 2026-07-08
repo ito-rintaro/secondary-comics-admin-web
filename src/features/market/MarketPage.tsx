@@ -351,7 +351,11 @@ function SalesTable({
               <td>{r.title}</td>
               <td>{r.seller}</td>
               <td>
-                <span className="badge">{r.condition}</span>
+                {r.condition ? (
+                  <span className="badge">{r.condition}</span>
+                ) : (
+                  <span className="muted">—</span>
+                )}
               </td>
               <td className="num">{formatYen(r.price)}</td>
               <td className="mono">{r.soldAt}</td>

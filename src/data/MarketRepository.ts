@@ -1,4 +1,3 @@
-import type { Condition } from "../domain/Condition";
 import type { ConditionFlags } from "../domain/ConditionFlags";
 import type { MarketSale } from "../domain/MarketSale";
 import type { MarketSummary } from "../domain/MarketSummary";
@@ -13,7 +12,7 @@ import type { MarketSummary } from "../domain/MarketSummary";
 export interface NewMarketInput {
   // API へ送る成約固有情報
   catalogId: string;
-  condition: Condition;
+  condition: string; // 鑑定記録（自由文字列。分類未確定のため型で縛らない。空文字可）
   price: number; // 成約価格（円・0 以上の整数）
   soldAt: string; // 成約日（"YYYY-MM-DD"）
   seller: string; // 販売元 / ショップ名（空文字可）

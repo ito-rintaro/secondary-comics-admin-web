@@ -80,6 +80,14 @@ UI (features/*)
   書誌は選択カタログからの読み取り専用プレビューにしている。相場（現在価格・変化率・チャート）は
   成約を積み重ねて `GET /market/summary` 側で自動算出されるため、フォームは history を入力しない。
   なお `MarketSale` は `catalogId` を保持するため、編集時はカタログを再選択せず初期選択できる。
+- **`condition` は鑑定記録（自由文字列・任意）**: 型・契約は `string`（空文字可。`NewMarketInput`
+  では必須から外れている）。分類（グレード体系）が未確定のため保存層は縛らない。ただし
+  **入力画面（`MarketForm`）だけ** GBA ランクとして **0〜10.0・0.1 刻み** に制限し、`validateGbaRank`
+  で検証する（未鑑定は空欄可）。制限は UI に閉じており、体系が変われば `validateGbaRank` の
+  差し替えだけで済む。表示（成約ログ）では空文字なら「—」を出す。
+- **成約ログの絞り込み取得**: `GET /market?catalogId=...` を指定するとその catalog の成約を
+  `soldAt` 降順で返す（個別の相場推移詳細向け）。現行 FE の `list()` は全件取得で、この
+  クエリは未使用（将来の詳細ビュー用の拡張余地）。
 - **ステージ**: リクエストは `VITE_API_BASE_URL + /catalogs` の形で組み立てる。API Gateway が
   名前付きステージ（例 `/dev`）なら `VITE_API_BASE_URL` 末尾に含める（`$default` なら不要）。
 - **エラー**: 2xx 以外はレスポンス body の `{ message }` を拾って `ApiError` を投げ、
