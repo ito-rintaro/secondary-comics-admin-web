@@ -1,7 +1,7 @@
 # 開発ドキュメント（market-catalog-editor）
 
-市場相場（MarketRecord）とカタログ書誌マスタ（Catalog）を編集する管理用 Web ツールの
-開発者向けドキュメント。仕様の正本は
+マーケット成約ログ（MarketSale）・相場サマリ（MarketSummary）とカタログ書誌マスタ（Catalog）を
+編集する管理用 Web ツールの開発者向けドキュメント。仕様の正本は
 [`../market-catalog-editor-spec.md`](../market-catalog-editor-spec.md)。
 
 ## アーキテクチャ概要
@@ -31,7 +31,7 @@ UI (features/*)
 | `src/data/localStorage/` | localStorage 実装 + JSON ストアヘルパ（`ImageRepository` は data: URL 化） |
 | `src/data/http/` | 実 API 実装（`httpClient.ts` + `HttpCatalogRepository` / `HttpMarketRepository` / `HttpImageRepository`） |
 | `src/data/seed/` | 初期シード（起動時に localStorage が空なら投入） |
-| `src/lib/` | `marketDerive.ts`（§8 導出）・`imageUrl.ts`（画像解決）・`imageValidation.ts`（アップロード検証）・`format.ts`・`errorMessage.ts` |
+| `src/lib/` | `marketDerive.ts`（成約ログ→相場サマリの畳み込み・成約入力の検証）・`imageUrl.ts`（画像解決）・`imageValidation.ts`（アップロード検証）・`format.ts`・`errorMessage.ts` |
 | `src/features/catalog/` | カタログ CRUD 画面 |
 | `src/features/market/` | マーケット CRUD 画面 |
 | `src/features/common/` | Thumbnail / ConfirmDialog / Sparkline |
@@ -39,14 +39,24 @@ UI (features/*)
 
 ## ドメインルール
 
-- **相場の導出（`src/lib/marketDerive.ts`）**
-  - `price = history[history.length - 1]`（末尾）
-  - `change = (末尾 - 先頭) / 先頭`（先頭 0 のときは 0）
-  - `history` はちょうど 12 要素・各要素 0 以上の整数でなければ保存不可
-  - シード生成・create・update から共用し、保存前に必ず再導出する
-- **id / listedAt 採番（localStorage 実装）**
+- **マーケットは 2 層構造**
+  - **成約ログ `MarketSale`（`GET /market`）** … 1 レコード＝1 価格の append-only な取引ログ。
+    editor の CRUD 対象。書誌はサーバが `catalogId` 参照の Catalog から合成する。
+  - **相場サマリ `MarketSummary`（`GET /market/summary`）** … catalog 単位に集計した読み取りモデル。
+    相場一覧カード・価格チャートの供給源。`price` / `change` / `history[12]` は導出値。
+    **成約が 1 件以上ある catalog のみ**返る（0 件は含まれない）。
+- **相場サマリの導出（`src/lib/marketDerive.ts` の `deriveSummaries`）**
+  - サーバ（`GET /market/summary`）の集計を、モックモードでも同じ畳み込みで再現する。
+  - 直近 12 ヶ月の月バケットに成約価格を振り分け、月内平均。欠損月は前方フィル、
+    最初の成約より前はバックフィルして `history[12]` を成立させる（末尾＝当月）。
+  - `price = history` 末尾、`change = (末尾 - 先頭) / 先頭`（先頭 0 のときは 0）。
+  - 実 API では `HttpMarketRepository` が `/market/summary` をそのまま呼ぶため、この畳み込みは
+    モック（`LocalMarketRepository`）専用。
+  - 成約入力の検証 `validatePrice`（0 以上の整数）/ `validateSoldAt`（実在暦日・未来日許容）も提供。
+- **id 採番（localStorage 実装）**
   - Catalog … `cat-XXX`（既存最大 +1、3 桁ゼロ埋め）
-  - Market … `mk{n}`（既存最大 +1）／ `listedAt` は既存最大 +1
+  - MarketSale … `mk{n}`（既存最大 +1）。保存形が変わったため保存キーは `editor:markets:v2`
+    （旧 `editor:markets` の非互換データは読まない）。
 - **画像 URL（`src/lib/imageUrl.ts`）**
   - `imageUrl` は S3 オブジェクトキー（ファイル名のみ）
   - `VITE_IMAGE_BASE_URL`（ドメインのみ・末尾スラッシュ無し）＋ コード側で `/images/` 前置
@@ -64,11 +74,12 @@ UI (features/*)
 - 本文なしの 204 は `httpClient.ts` の `apiRequestVoid`（JSON を読まない）で扱う。
 - **認証**: `httpClient.ts` が Cognito の **ID トークン**を `Authorization: Bearer` で送る
   （editor グループ判定に使う `cognito:groups` は ID トークンに載るため）。
-- **マーケットの書誌は catalogId 参照**: `POST/PUT /market` の `NewMarketInput` は
-  `catalogId / seller / condition / history` のみで、書誌（title/author/… / flags）は
-  サーバが参照カタログから導出する。そのため `MarketForm` はカタログ選択を必須にし、
-  書誌は選択カタログからの読み取り専用プレビューにしている。`catalogId` は入力専用で、
-  保存・返却型の `MarketRecord` には持たせない（localStorage 実装は無視する）。
+- **マーケット成約の入力は単一成約**: `POST/PUT /market` の `NewMarketInput` は
+  `catalogId / condition / price / soldAt / seller` のみで、書誌（title/author/… / flags）は
+  サーバが参照カタログから合成する。そのため `MarketForm` はカタログ選択を必須にし、
+  書誌は選択カタログからの読み取り専用プレビューにしている。相場（現在価格・変化率・チャート）は
+  成約を積み重ねて `GET /market/summary` 側で自動算出されるため、フォームは history を入力しない。
+  なお `MarketSale` は `catalogId` を保持するため、編集時はカタログを再選択せず初期選択できる。
 - **ステージ**: リクエストは `VITE_API_BASE_URL + /catalogs` の形で組み立てる。API Gateway が
   名前付きステージ（例 `/dev`）なら `VITE_API_BASE_URL` 末尾に含める（`$default` なら不要）。
 - **エラー**: 2xx 以外はレスポンス body の `{ message }` を拾って `ApiError` を投げ、
@@ -77,6 +88,8 @@ UI (features/*)
 ## UI レイアウト
 
 - 左サイドバーにタブ（カタログ / マーケット）を縦並び、右側に各画面。
+- マーケット画面は「相場サマリ（読み取り・チャート）」と「成約ログ（編集・削除・追加）」を
+  1 画面内のセグメントトグルで切り替える。
 - 720px 以下ではサイドバーを上部の横並びバーに自動で切り替える。
 - ルーター・状態管理ライブラリは不使用（`App.tsx` のローカル state で切替）。
 
