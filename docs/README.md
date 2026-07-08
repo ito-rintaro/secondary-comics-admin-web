@@ -31,9 +31,9 @@ UI (features/*)
 | `src/data/localStorage/` | localStorage 実装 + JSON ストアヘルパ（`ImageRepository` は data: URL 化） |
 | `src/data/http/` | 実 API 実装（`httpClient.ts` + `HttpCatalogRepository` / `HttpMarketRepository` / `HttpImageRepository`） |
 | `src/data/seed/` | 初期シード（起動時に localStorage が空なら投入） |
-| `src/lib/` | `marketDerive.ts`（成約ログ→相場サマリの畳み込み・成約入力の検証）・`imageUrl.ts`（画像解決）・`imageValidation.ts`（アップロード検証）・`format.ts`・`errorMessage.ts` |
+| `src/lib/` | `marketDerive.ts`（成約ログ→相場サマリの畳み込み・成約入力の検証）・`marketCsv.ts`（CSV のパース＋成約入力への検証・変換）・`imageUrl.ts`（画像解決）・`imageValidation.ts`（アップロード検証）・`format.ts`・`errorMessage.ts` |
 | `src/features/catalog/` | カタログ CRUD 画面 |
-| `src/features/market/` | マーケット CRUD 画面 |
+| `src/features/market/` | マーケット CRUD 画面（`MarketForm` 単票入力 + `MarketCsvImport` CSV 一括取込） |
 | `src/features/common/` | Thumbnail / ConfirmDialog / Sparkline |
 | `src/config/container.ts` | 依存の組み立て（DI） |
 
@@ -91,6 +91,16 @@ UI (features/*)
   プリセット外の個別ショップ名（既存データの「駿河屋」等）も入力・保持できる。編集時は既存値が
   プリセットなら選択、そうでなければ「その他」＋自由入力に自動で振り分ける。制限は UI に閉じており、
   選択肢が変わってもこのフォームの差し替えだけで済む。
+- **CSV からの成約一括取込（`MarketCsvImport` + `src/lib/marketCsv.ts`）**: 成約ログビューの
+  「CSV から追加」からファイルを選び、`catalogId / price / soldAt / condition / seller` 列を持つ
+  CSV を取り込む。API に一括エンドポイントは無いため、**登録は有効行を 1 件ずつ `POST /market`
+  で逐次実行**する（`marketRepository.create` のループ）。`catalogId` 列で既存 Catalog を参照し、
+  書誌は単票の `MarketForm` と同様に参照カタログから合成する（新規ライブラリは足さず自前パーサ）。
+  検証は `marketDerive.ts` の `validatePrice` / `validateSoldAt` を再利用し、**プレビューで有効行 /
+  エラー行（理由付き）に振り分けてから登録**する。必須列（`catalogId` / `price` / `soldAt`）欠落は
+  ヘッダエラーとして全体を止める。動作確認用のサンプルは
+  [`sample-market-sales.csv`](./sample-market-sales.csv)（全行有効）と
+  [`sample-market-sales-with-errors.csv`](./sample-market-sales-with-errors.csv)（エラー混在）。
 - **成約ログの絞り込み取得**: `GET /market?catalogId=...` を指定するとその catalog の成約を
   `soldAt` 降順で返す（個別の相場推移詳細向け）。現行 FE の `list()` は全件取得で、この
   クエリは未使用（将来の詳細ビュー用の拡張余地）。

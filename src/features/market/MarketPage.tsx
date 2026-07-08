@@ -9,11 +9,13 @@ import { Thumbnail } from "../common/Thumbnail";
 import { Sparkline } from "../common/Sparkline";
 import { ConfirmDialog } from "../common/ConfirmDialog";
 import { MarketForm, type MarketFormValues } from "./MarketForm";
+import { MarketCsvImport } from "./MarketCsvImport";
 
 type Mode =
   | { kind: "list" }
   | { kind: "create" }
-  | { kind: "edit"; item: MarketSale };
+  | { kind: "edit"; item: MarketSale }
+  | { kind: "import" };
 
 // 相場サマリ（読み取り・チャート）／成約ログ（編集）の 2 ビューを 1 画面で切り替える。
 type View = "summary" | "sales";
@@ -149,6 +151,19 @@ export function MarketPage() {
     return sorted;
   }, [sales, query, salesSort]);
 
+  if (mode.kind === "import") {
+    return (
+      <MarketCsvImport
+        catalogs={catalogs}
+        onDone={async () => {
+          setMode({ kind: "list" });
+          await reload();
+        }}
+        onCancel={() => setMode({ kind: "list" })}
+      />
+    );
+  }
+
   if (mode.kind !== "list") {
     return (
       <MarketForm
@@ -216,6 +231,16 @@ export function MarketPage() {
               <option value="soldDesc">成約日が新しい順</option>
               <option value="priceDesc">価格が高い順</option>
             </select>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setActionError(null);
+                setMode({ kind: "import" });
+              }}
+            >
+              CSV から追加
+            </button>
             <button
               type="button"
               className="btn btn--primary"
