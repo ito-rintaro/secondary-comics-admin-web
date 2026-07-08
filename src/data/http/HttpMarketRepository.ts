@@ -1,40 +1,47 @@
-import type { MarketRecord } from "../../domain/MarketRecord";
 import type { Condition } from "../../domain/Condition";
+import type { MarketSale } from "../../domain/MarketSale";
+import type { MarketSummary } from "../../domain/MarketSummary";
 import type { MarketRepository, NewMarketInput } from "../MarketRepository";
 import { ApiError, apiRequest, apiRequestVoid } from "./httpClient";
 
 // API の NewMarketInput（openapi.yaml）。書誌・flags は catalogId 参照の Catalog から
-// サーバが導出するため送らず、出品固有情報だけを送る。
+// サーバが合成するため送らず、成約固有情報（condition/price/soldAt/seller）だけを送る。
 interface MarketApiInput {
   catalogId: string;
-  seller: string;
   condition: Condition;
-  history: number[];
+  price: number;
+  soldAt: string;
+  seller: string;
 }
 
 const toApiInput = (input: NewMarketInput): MarketApiInput => ({
   catalogId: input.catalogId,
-  seller: input.seller,
   condition: input.condition,
-  history: input.history,
+  price: input.price,
+  soldAt: input.soldAt,
+  seller: input.seller,
 });
 
 // 編集系 API 実装（openapi.yaml /market）。
-// GET /market（list）/ POST /market（create）/ PUT /market/{id}（update）/
-// DELETE /market/{id}（remove）に対応。
+// GET /market（成約ログ）/ GET /market/summary（相場サマリ）/
+// POST /market（create）/ PUT /market/{id}（update）/ DELETE /market/{id}（remove）に対応。
 // GET /market/{id} は API に無いため get は list から解決する。
 export class HttpMarketRepository implements MarketRepository {
-  async list(): Promise<MarketRecord[]> {
-    return apiRequest<MarketRecord[]>("/market");
+  async list(): Promise<MarketSale[]> {
+    return apiRequest<MarketSale[]>("/market");
   }
 
-  async get(id: string): Promise<MarketRecord | null> {
+  async get(id: string): Promise<MarketSale | null> {
     const all = await this.list();
     return all.find((r) => r.id === id) ?? null;
   }
 
-  async create(input: NewMarketInput): Promise<MarketRecord> {
-    return apiRequest<MarketRecord>("/market", {
+  async summary(): Promise<MarketSummary[]> {
+    return apiRequest<MarketSummary[]>("/market/summary");
+  }
+
+  async create(input: NewMarketInput): Promise<MarketSale> {
+    return apiRequest<MarketSale>("/market", {
       method: "POST",
       body: toApiInput(input),
     });
@@ -43,16 +50,21 @@ export class HttpMarketRepository implements MarketRepository {
   async update(
     id: string,
     patch: Partial<NewMarketInput>,
-  ): Promise<MarketRecord> {
-    // PUT /market/{id} は catalogId / condition / history を必須で全置換する。
+  ): Promise<MarketSale> {
+    // PUT /market/{id} は catalogId / condition / price / soldAt を必須で全置換する。
     // フォームは常に全項目を送るが、型上は Partial のためここで担保する。
-    if (!patch.catalogId || !patch.condition || !patch.history) {
+    if (
+      !patch.catalogId ||
+      !patch.condition ||
+      patch.price === undefined ||
+      !patch.soldAt
+    ) {
       throw new ApiError(
         400,
-        "更新には catalogId / condition / history が必要です。",
+        "更新には catalogId / condition / price / soldAt が必要です。",
       );
     }
-    return apiRequest<MarketRecord>(`/market/${encodeURIComponent(id)}`, {
+    return apiRequest<MarketSale>(`/market/${encodeURIComponent(id)}`, {
       method: "PUT",
       body: toApiInput(patch as NewMarketInput),
     });
