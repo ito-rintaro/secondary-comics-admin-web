@@ -385,6 +385,11 @@ body {
   color: var(--muted);
 }
 
+/* 同一 field 内の 2 段目入力（seller の「その他」自由入力など）。 */
+.field__sub {
+  margin-top: 8px;
+}
+
 .req {
   color: var(--danger);
   font-size: 11px;

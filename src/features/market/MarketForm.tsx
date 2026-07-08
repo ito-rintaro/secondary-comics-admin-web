@@ -25,6 +25,12 @@ const validateGbaRank = (value: string): boolean => {
   return n >= 0 && n <= 10;
 };
 
+// seller は自由文字列（型は string のまま・空文字可）だが、入力画面では主要な販売元を
+// 選択肢から選べるようにする。プリセット以外（既存データの個別ショップ名など）や未確定分は
+// 「その他」の自由入力欄で受ける。分類が将来変わっても型は据え置きで済む。
+const SELLER_OTHER = "その他";
+const SELLER_PRESETS = ["メルカリ", "ヤフオク", "ebay"] as const;
+
 export function MarketForm({
   editing,
   catalogs,
@@ -43,7 +49,21 @@ export function MarketForm({
     editing ? String(editing.price) : "",
   );
   const [soldAt, setSoldAt] = useState<string>(editing?.soldAt ?? "");
-  const [seller, setSeller] = useState(editing?.seller ?? "");
+  // seller はプリセット選択 + 「その他」の自由入力に分解して持つ。
+  // 既存値がプリセットならその選択、そうでなければ「その他」+ 自由入力に振り分ける
+  // （空文字も「その他」の空欄として扱い、空文字可を維持する）。
+  const initialSeller = editing?.seller ?? "";
+  const initialIsPreset = (SELLER_PRESETS as readonly string[]).includes(
+    initialSeller,
+  );
+  const [sellerChoice, setSellerChoice] = useState<string>(
+    initialIsPreset ? initialSeller : SELLER_OTHER,
+  );
+  const [customSeller, setCustomSeller] = useState<string>(
+    initialIsPreset ? "" : initialSeller,
+  );
+  const seller =
+    sellerChoice === SELLER_OTHER ? customSeller.trim() : sellerChoice;
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -193,11 +213,26 @@ export function MarketForm({
         </label>
         <label className="field">
           <span className="field__label">seller（販売元 / ショップ名）</span>
-          <input
+          <select
             className="field__input"
-            value={seller}
-            onChange={(e) => setSeller(e.target.value)}
-          />
+            value={sellerChoice}
+            onChange={(e) => setSellerChoice(e.target.value)}
+          >
+            {SELLER_PRESETS.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+            <option value={SELLER_OTHER}>{SELLER_OTHER}</option>
+          </select>
+          {sellerChoice === SELLER_OTHER && (
+            <input
+              className="field__input field__sub"
+              value={customSeller}
+              placeholder="販売元名（任意・空欄可）"
+              onChange={(e) => setCustomSeller(e.target.value)}
+            />
+          )}
         </label>
       </div>
 
