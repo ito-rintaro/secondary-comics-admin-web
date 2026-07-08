@@ -1,4 +1,3 @@
-import type { Condition } from "./Condition";
 import type { ConditionFlags } from "./ConditionFlags";
 
 // マーケットの成約レコード 1 件（1 件 1 価格の append-only な取引ログ）。
@@ -16,7 +15,7 @@ export interface MarketSale {
   flags: ConditionFlags; // 付帯状態フラグ（Catalog 由来）
   imageUrl: string; // 画像の S3 オブジェクトキー（Catalog 由来。ファイル名のみ。空文字可）
   catalogId: string; // 参照する Catalog の id（集計単位）
-  condition: Condition; // 状態ランク
+  condition: string; // 鑑定記録（自由文字列。分類が未確定のため型で縛らない。空文字可）
   price: number; // 成約価格（円）＝単一
   soldAt: string; // 成約日（"YYYY-MM-DD"）。集計・チャートの時間軸
   seller: string; // 販売元 / ショップ名（空文字可）
