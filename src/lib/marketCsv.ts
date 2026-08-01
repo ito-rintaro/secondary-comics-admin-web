@@ -1,11 +1,19 @@
 import type { Catalog } from "../domain/Catalog";
 import type { NewMarketInput } from "../data/MarketRepository";
 import { validatePrice, validateSoldAt } from "./marketDerive";
+import {
+  buildHeaderIndex,
+  cellAt,
+  isBlankRow,
+  type CsvErrorRow,
+  type CsvImportResult as CsvImportResultOf,
+} from "./csv";
 
 // CSV から成約（MarketSale）を一括作成するための、パース + 検証ロジック（純粋関数）。
 // UI・リポジトリに依存しないため単体でテストしやすい。API は成約 1 件ずつの
 // POST /market のみなので、ここでは各行を NewMarketInput に落とすところまでを担い、
 // 実際の登録ループは呼び出し側（MarketCsvImport）が marketRepository.create で行う。
+// CSV パーサ・エラー行の型は csv.ts の共通実装（catalogCsv.ts と共有）を使う。
 
 // 想定するヘッダ列。catalogId / price / soldAt は必須、condition / seller は任意。
 // 書誌（title/author/…）は catalogId 参照の Catalog から合成するため CSV には含めない
@@ -20,76 +28,8 @@ export interface CsvValidRow {
   catalogTitle: string; // プレビュー表示用（選択 Catalog の title）
 }
 
-export interface CsvErrorRow {
-  rowNumber: number;
-  messages: string[]; // その行の全エラー理由
-  raw: string[]; // 生のセル配列（プレビューで原文を見せる）
-}
-
-export interface CsvImportResult {
-  valid: CsvValidRow[];
-  errors: CsvErrorRow[];
-  headerError: string | null; // 必須列欠落など、全体を止める致命的エラー
-}
-
-// 最小限の RFC4180 風 CSV パーサ。ダブルクォート囲み・"" エスケープ・カンマ・
-// CRLF/LF に対応する。先頭 BOM は除去する。空文字なら空配列。
-export function parseCsv(text: string): string[][] {
-  const src = text.replace(/^\uFEFF/, "");
-  if (src === "") return [];
-
-  const rows: string[][] = [];
-  let field = "";
-  let row: string[] = [];
-  let inQuotes = false;
-
-  const endField = () => {
-    row.push(field);
-    field = "";
-  };
-  const endRow = () => {
-    endField();
-    rows.push(row);
-    row = [];
-  };
-
-  for (let i = 0; i < src.length; i++) {
-    const ch = src[i];
-    if (inQuotes) {
-      if (ch === '"') {
-        if (src[i + 1] === '"') {
-          field += '"';
-          i++; // エスケープされた二重引用符
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        field += ch;
-      }
-      continue;
-    }
-    if (ch === '"') {
-      inQuotes = true;
-    } else if (ch === ",") {
-      endField();
-    } else if (ch === "\n") {
-      endRow();
-    } else if (ch === "\r") {
-      // CRLF の CR は無視（次の \n で行確定）。単独 CR も行末とみなす。
-      if (src[i + 1] !== "\n") endRow();
-    } else {
-      field += ch;
-    }
-  }
-  // 末尾に改行が無い場合の最終行を確定する（field/row に残りがあれば）。
-  if (field !== "" || row.length > 0) endRow();
-
-  return rows;
-}
-
-// 行が完全に空（全セルが空文字）かどうか。末尾の空行や区切りだけの行を捨てる。
-const isBlankRow = (cells: string[]): boolean =>
-  cells.every((c) => c.trim() === "");
+export type { CsvErrorRow };
+export type CsvImportResult = CsvImportResultOf<CsvValidRow>;
 
 // パース済みの行配列を検証し、有効行（NewMarketInput）とエラー行に振り分ける。
 export function mapRows(
@@ -100,16 +40,8 @@ export function mapRows(
     return { valid: [], errors: [], headerError: "CSV が空です。" };
   }
 
-  // 1 行目 = ヘッダ。前後空白を除去して列名 → 列インデックスの対応を作る。
-  const header = rows[0].map((h) => h.trim());
-  const index: Record<string, number> = {};
-  for (const col of KNOWN_COLUMNS) {
-    // 大文字小文字を無視して一致させる。
-    const at = header.findIndex(
-      (h) => h.toLowerCase() === col.toLowerCase(),
-    );
-    if (at !== -1) index[col] = at;
-  }
+  // 1 行目 = ヘッダ。列名 → 列インデックスの対応を作る（大文字小文字は無視）。
+  const index = buildHeaderIndex(rows[0], KNOWN_COLUMNS);
 
   const missing = REQUIRED_COLUMNS.filter((c) => !(c in index));
   if (missing.length > 0) {
@@ -122,7 +54,7 @@ export function mapRows(
 
   const catalogById = new Map(catalogs.map((c) => [c.id, c]));
   const cell = (cells: string[], col: string): string =>
-    (cells[index[col]] ?? "").trim();
+    cellAt(cells, index, col);
 
   const valid: CsvValidRow[] = [];
   const errors: CsvErrorRow[] = [];
