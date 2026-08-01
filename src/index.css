@@ -10,6 +10,7 @@
   --danger: #e5484d;
   --pos: #3fb950;
   --neg: #f85149;
+  --warn: #d29922;
   --radius: 8px;
   color-scheme: dark;
 }
@@ -321,6 +322,11 @@ body {
 
 .neg {
   color: var(--neg);
+}
+
+/* 警告（登録は妨げないが確認したい事柄。CSV 取込プレビューの重複検知など） */
+.warn {
+  color: var(--warn);
 }
 
 .muted {

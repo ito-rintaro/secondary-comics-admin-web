@@ -6,8 +6,13 @@ import { errorMessage } from "../../lib/errorMessage";
 import { Thumbnail } from "../common/Thumbnail";
 import { ConfirmDialog } from "../common/ConfirmDialog";
 import { CatalogForm, type CatalogFormValues } from "./CatalogForm";
+import { CatalogCsvImport } from "./CatalogCsvImport";
 
-type Mode = { kind: "list" } | { kind: "create" } | { kind: "edit"; item: Catalog };
+type Mode =
+  | { kind: "list" }
+  | { kind: "create" }
+  | { kind: "edit"; item: Catalog }
+  | { kind: "import" };
 
 // カタログ管理画面（指示書 §9-1）。一覧 / 新規 / 編集 / 削除。
 // データアクセスは catalogRepository（interface）経由のみ。検索・並べ替えはクライアント側。
@@ -77,6 +82,19 @@ export function CatalogPage() {
     return [...base].sort((a, b) => a.id.localeCompare(b.id));
   }, [items, query]);
 
+  if (mode.kind === "import") {
+    return (
+      <CatalogCsvImport
+        catalogs={items}
+        onDone={async () => {
+          setMode({ kind: "list" });
+          await reload();
+        }}
+        onCancel={() => setMode({ kind: "list" })}
+      />
+    );
+  }
+
   if (mode.kind !== "list") {
     return (
       <CatalogForm
@@ -97,6 +115,16 @@ export function CatalogPage() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
+        <button
+          type="button"
+          className="btn"
+          onClick={() => {
+            setActionError(null);
+            setMode({ kind: "import" });
+          }}
+        >
+          CSV から追加
+        </button>
         <button
           type="button"
           className="btn btn--primary"

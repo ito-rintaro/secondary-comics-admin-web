@@ -1,7 +1,8 @@
 import { useRef, useState } from "react";
 import type { Catalog } from "../../domain/Catalog";
 import { marketRepository } from "../../config/container";
-import { parseCsv, mapRows, type CsvImportResult } from "../../lib/marketCsv";
+import { parseCsv } from "../../lib/csv";
+import { mapRows, type CsvImportResult } from "../../lib/marketCsv";
 import { formatYen } from "../../lib/format";
 import { errorMessage } from "../../lib/errorMessage";
 import { Thumbnail } from "../common/Thumbnail";
