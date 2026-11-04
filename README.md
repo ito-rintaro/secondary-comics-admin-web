@@ -1,5 +1,5 @@
 # secondary-comics-admin-web
-
+プレミア漫画のコレクション管理とマーケット相場閲覧のWebアプリ。React / TypeScript
 二次流通コミックの **市場相場（MarketRecord）** と **カタログ書誌マスタ（Catalog）** を
 編集する管理用 Web ツール。当面は **モックデータ + localStorage** で完結し、将来 Lambda に
 編集系 API が生えたらデータアクセス層（Repository）だけを差し替えて接続する。
